@@ -1,0 +1,24 @@
+{
+  "name": "node-dump-stacks",
+  "version": "0.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "nan": "^2.14.2",
+    "node-gyp-build": "^4.2.3"
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.13.5",
+    "@babel/preset-typescript": "^7.13.0",
+    "@types/jest": "^26.0.20",
+    "jest": "^26.6.3",
+    "prebuildify": "^4.1.2",
+    "prettier": "^2.2.1"
+  },
+  "scripts": {
+    "install": "node-gyp-build",
+    "test": "jest",
+    "prebuildify": "prebuildify -t 12.18.2 -t 14.15.1",
+    "format": "prettier --write '*.js' 'test/*.?s' '*.json' && clang-format -i src/*"
+  },
+  "gypfile": true
+}
