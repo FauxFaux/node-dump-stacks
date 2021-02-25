@@ -1,17 +1,107 @@
+#include <atomic>
+#include <iostream>
+#include <sstream>
+
 #include <nan.h>
 
+#include "stacks.h"
 #include "stringify.h"
+#include "sys.h"
 
-void Method(const Nan::FunctionCallbackInfo<v8::Value> &info) {
-  info.GetReturnValue().Set(Nan::New("world").ToLocalChecked());
+/// static internals; set in init and read elsewhere
+static uv_timer_t loop_watcher_timer = {};
+static v8::Isolate *init_isolate = nullptr;
+static std::atomic_bool already_initialised(false);
+
+/// config; written in init and read from elsewhere
+static uint64_t check_loop_every_ms = 100;
+static uint64_t report_after_block_time_ms = 1000;
+
+/// shared between the timer and the worker thread
+static std::atomic_uint64_t loop_last_alive_ms;
+static std::atomic_bool wrote_this_block(false);
+
+uint64_t block_estimate() { return wall_clock_time_ms() - loop_last_alive_ms; }
+
+void interrupt_main(v8::Isolate *isolate, void *_data) {
+  const uint64_t loop_blocked_ms = block_estimate();
+  const std::string stack = current_stack_trace(isolate);
+
+  std::ostringstream out;
+
+  out << R"({"name":"dump-stacks","blockedMs":)" << loop_blocked_ms;
+  out << R"(,"stack":")" << escape_json_string(stack) << "\"";
+  out << "}";
+
+  std::cerr << out.str() << std::endl;
+}
+
+[[noreturn]] void *worker_thread_main(void *unused) {
+  for (;;) {
+    uv_sleep(check_loop_every_ms);
+
+    if (wrote_this_block) {
+      continue;
+    }
+
+    uint64_t loop_blocked_ms = wall_clock_time_ms() - loop_last_alive_ms;
+    if (loop_blocked_ms < report_after_block_time_ms) {
+      continue;
+    }
+
+    wrote_this_block = true;
+
+    init_isolate->RequestInterrupt(interrupt_main, nullptr);
+  }
+}
+
+void record_loop_times(uv_timer_t *unused) {
+  loop_last_alive_ms = event_loop_time_ms();
+  wrote_this_block = false;
 }
 
 void Init(v8::Local<v8::Object> exports) {
+  if (already_initialised) {
+    Nan::ThrowError("this module cannot be loaded twice in a process");
+    return;
+  }
+  already_initialised = true;
+
+  if (uv_default_loop() != Nan::GetCurrentEventLoop()) {
+    // this is an assumption; we're going to use the global/default event loop
+    // elsewhere, without trying to keep track of what node is doing
+    Nan::ThrowError("must be initialised on the default event loop");
+    return;
+  }
+
+  const uint64_t observe_loop_timing_ms =
+      getenv_u64_or("DUMP_STACKS_OBSERVE_MS", 100);
+  check_loop_every_ms = getenv_u64_or("DUMP_STACKS_CHECK_MS", 100);
+  report_after_block_time_ms =
+      getenv_u64_or("DUMP_STACKS_REPORT_ONCE_MS", 1000);
+
+  init_isolate = v8::Isolate::GetCurrent();
+
+  try {
+    or_throw_code(
+        uv_timer_init(Nan::GetCurrentEventLoop(), &loop_watcher_timer),
+        "creating timer");
+    or_throw_code(uv_timer_start(&loop_watcher_timer, record_loop_times,
+                                 observe_loop_timing_ms,
+                                 observe_loop_timing_ms),
+                  "starting timer");
+
+    // prevent the timer from interfering with process shutdown
+    uv_unref(reinterpret_cast<uv_handle_t *>(&loop_watcher_timer));
+
+    create_thread(worker_thread_main);
+  } catch (const std::exception &e) {
+    Nan::ThrowError(e.what());
+    return;
+  }
+
   v8::Local<v8::Context> context = exports->CreationContext();
-  exports->Set(context, Nan::New("hello").ToLocalChecked(),
-               Nan::New<v8::FunctionTemplate>(Method)
-                   ->GetFunction(context)
-                   .ToLocalChecked());
+  exports->Set(context, Nan::New("ready").ToLocalChecked(), Nan::New(true));
 }
 
 NODE_MODULE(dump_stacks, Init)
