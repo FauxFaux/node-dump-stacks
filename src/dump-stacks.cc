@@ -60,7 +60,8 @@ void record_loop_times(uv_timer_t *unused) {
   wrote_this_block = false;
 }
 
-void Init(v8::Local<v8::Object> exports) {
+void Init(v8::Local<v8::Object> exports, v8::Local<v8::Value> _module,
+          void *_priv) {
   if (already_initialised) {
     Nan::ThrowError("this module cannot be loaded twice in a process");
     return;
@@ -82,26 +83,24 @@ void Init(v8::Local<v8::Object> exports) {
 
   init_isolate = v8::Isolate::GetCurrent();
 
-  try {
-    or_throw_code(
-        uv_timer_init(Nan::GetCurrentEventLoop(), &loop_watcher_timer),
-        "creating timer");
-    or_throw_code(uv_timer_start(&loop_watcher_timer, record_loop_times,
-                                 observe_loop_timing_ms,
-                                 observe_loop_timing_ms),
-                  "starting timer");
+  if (0 != uv_timer_init(Nan::GetCurrentEventLoop(), &loop_watcher_timer)) {
+    return Nan::ThrowError("creating timer");
+  }
+  if (0 != uv_timer_start(&loop_watcher_timer, record_loop_times,
+                          observe_loop_timing_ms, observe_loop_timing_ms)) {
+    return Nan::ThrowError("starting timer");
+  }
 
-    // prevent the timer from interfering with process shutdown
-    uv_unref(reinterpret_cast<uv_handle_t *>(&loop_watcher_timer));
+  // prevent the timer from interfering with process shutdown
+  uv_unref(reinterpret_cast<uv_handle_t *>(&loop_watcher_timer));
 
-    create_thread(worker_thread_main);
-  } catch (const std::exception &e) {
-    Nan::ThrowError(e.what());
+  if (!create_thread(worker_thread_main)) {
     return;
   }
 
   v8::Local<v8::Context> context = exports->CreationContext();
-  exports->Set(context, Nan::New("ready").ToLocalChecked(), Nan::New(true));
+  exports->Set(context, Nan::New("ready").ToLocalChecked(), Nan::New(true))
+      .Check();
 }
 
 NODE_MODULE(dump_stacks, Init)
