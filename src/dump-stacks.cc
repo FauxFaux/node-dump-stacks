@@ -83,6 +83,8 @@ void Init(v8::Local<v8::Object> exports, v8::Local<v8::Value> _module,
     return Nan::ThrowError("starting timer");
   }
 
+  loop_last_alive_ms = uv_now(loop_watcher_timer.loop);
+
   // prevent the timer from interfering with process shutdown
   uv_unref(reinterpret_cast<uv_handle_t *>(&loop_watcher_timer));
 
