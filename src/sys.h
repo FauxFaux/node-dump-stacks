@@ -7,8 +7,6 @@
 
 static uint64_t wall_clock_time_ms() { return uv_hrtime() / 1000 / 1000; }
 
-static uint64_t event_loop_time_ms() { return uv_now(uv_default_loop()); }
-
 // returns true if successful, false if queued an exception
 static bool create_thread(void *(*thread_main)(void *unused)) {
   pthread_attr_t attr = {};

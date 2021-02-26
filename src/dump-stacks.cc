@@ -1,6 +1,5 @@
 #include <atomic>
 #include <iostream>
-#include <sstream>
 
 #include <nan.h>
 
@@ -18,7 +17,7 @@ static uint64_t check_loop_every_ms = 100;
 static uint64_t report_after_block_time_ms = 1000;
 
 /// shared between the timer and the worker thread
-static std::atomic_uint64_t loop_last_alive_ms;
+static std::atomic_uint64_t loop_last_alive_ms(0);
 static std::atomic_bool wrote_this_block(false);
 
 uint64_t block_estimate() { return wall_clock_time_ms() - loop_last_alive_ms; }
@@ -55,8 +54,8 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
   }
 }
 
-void record_loop_times(uv_timer_t *unused) {
-  loop_last_alive_ms = event_loop_time_ms();
+void record_loop_times(uv_timer_t *timer) {
+  loop_last_alive_ms = uv_now(timer->loop);
   wrote_this_block = false;
 }
 
@@ -67,13 +66,6 @@ void Init(v8::Local<v8::Object> exports, v8::Local<v8::Value> _module,
     return;
   }
   already_initialised = true;
-
-  if (uv_default_loop() != Nan::GetCurrentEventLoop()) {
-    // this is an assumption; we're going to use the global/default event loop
-    // elsewhere, without trying to keep track of what node is doing
-    Nan::ThrowError("must be initialised on the default event loop");
-    return;
-  }
 
   const uint64_t observe_loop_timing_ms =
       getenv_u64_or("DUMP_STACKS_OBSERVE_MS", 100);
