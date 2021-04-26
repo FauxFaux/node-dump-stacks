@@ -31,7 +31,8 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
 
   std::ostringstream out;
 
-  out << R"({"name":"dump-stacks","blockedMs":)" << loop_blocked_ms;
+  out << R"({"name":"dump-stacks","message":"event loop blocked","blockedMs":)";
+  out << loop_blocked_ms;
   out << R"(,"stack":")" << escape_json_string(stack) << "\"";
   out << "}";
 
