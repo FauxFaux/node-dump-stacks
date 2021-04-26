@@ -18,7 +18,7 @@ static uint64_t report_after_block_time_ms = 1000;
 
 /// shared between the timer and the worker thread
 static std::atomic_uint64_t loop_last_alive_ms(0);
-static std::atomic_bool wrote_this_block(false);
+static std::atomic_bool disable_calling_interrupt(false);
 
 uint64_t block_estimate() { return wall_clock_time_ms() - loop_last_alive_ms; }
 
@@ -33,13 +33,15 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
   out << "}";
 
   std::cerr << out.str() << std::endl;
+
+  disable_calling_interrupt = false;
 }
 
 [[noreturn]] void *worker_thread_main(void *unused) {
   for (;;) {
     uv_sleep(check_loop_every_ms);
 
-    if (wrote_this_block) {
+    if (disable_calling_interrupt) {
       continue;
     }
 
@@ -48,7 +50,7 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
       continue;
     }
 
-    wrote_this_block = true;
+    disable_calling_interrupt = true;
 
     init_isolate->RequestInterrupt(interrupt_main, nullptr);
   }
@@ -56,7 +58,6 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
 
 void record_loop_times(uv_timer_t *timer) {
   loop_last_alive_ms = uv_now(timer->loop);
-  wrote_this_block = false;
 }
 
 void Init(v8::Local<v8::Object> exports, v8::Local<v8::Value> _module,
