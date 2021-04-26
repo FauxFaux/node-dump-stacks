@@ -18,6 +18,9 @@ static uint64_t report_after_block_time_ms = 1000;
 
 /// shared between the timer and the worker thread
 static std::atomic_uint64_t loop_last_alive_ms(0);
+/// has loop_last_alive_ms been reset since we last triggered an interrupt
+static std::atomic_bool observed_this_block(false);
+/// are we waiting for an interrupt to run (i.e. did we already trigger it)
 static std::atomic_bool disable_calling_interrupt(false);
 
 uint64_t block_estimate() { return wall_clock_time_ms() - loop_last_alive_ms; }
@@ -41,7 +44,7 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
   for (;;) {
     uv_sleep(check_loop_every_ms);
 
-    if (disable_calling_interrupt) {
+    if (disable_calling_interrupt || observed_this_block) {
       continue;
     }
 
@@ -51,6 +54,7 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
     }
 
     disable_calling_interrupt = true;
+    observed_this_block = true;
 
     init_isolate->RequestInterrupt(interrupt_main, nullptr);
   }
@@ -58,6 +62,7 @@ void interrupt_main(v8::Isolate *isolate, void *_data) {
 
 void record_loop_times(uv_timer_t *timer) {
   loop_last_alive_ms = uv_now(timer->loop);
+  observed_this_block = false;
 }
 
 void Init(v8::Local<v8::Object> exports, v8::Local<v8::Value> _module,
