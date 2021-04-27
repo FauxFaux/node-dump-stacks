@@ -39,6 +39,7 @@ although without enough metadata for `bunyan` to actually process them.
  * `DUMP_STACKS_OBSERVE_MS=100`: Record details about the event loop about this
      often.
  * `DUMP_STACKS_CHECK_MS=100`: Check up on the event loop about this often.
+ * `DUMP_STACKS_ENABLED=false`: Do Nothing At All; don't even execute the native module
 
 The first value is up to you. Set it too low, and you will get a lot of reports,
 and a report has some overhead. Set it too high and you won't get any reports.
