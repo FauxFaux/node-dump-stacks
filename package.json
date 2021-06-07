@@ -1,5 +1,5 @@
 {
-  "name": "node-dump-stacks",
+  "name": "@snyk/node-dump-stacks",
   "version": "0.0.0",
   "main": "index.js",
   "scripts": {
